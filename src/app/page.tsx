@@ -7,6 +7,59 @@ type Field = {
   type: string;
 };
 
+// Helper function to flatten nested objects and handle various data types
+const flattenData = (doc: any, prefix = ""): Record<string, any> => {
+  return Object.entries(doc).reduce((acc, [key, value]) => {
+    const fieldName = prefix ? `${prefix}.${key}` : key;
+
+    if (value && value.$date) {
+      acc[fieldName] = new Date(value.$date).toISOString();
+    } else if (Array.isArray(value)) {
+      acc[fieldName] = value.map((item) =>
+        typeof item === "object"
+          ? Object.entries(item).map(([k, v]) => `${k}: ${v}`).join(", ")
+          : item
+      ).join("; ");
+    } else if (typeof value === "object" && value !== null) {
+      Object.assign(acc, flattenData(value, fieldName));
+    } else {
+      acc[fieldName] = value;
+    }
+
+    return acc;
+  }, {} as Record<string, any>);
+};
+
+
+// Component to render the data table
+const DataTable = ({ data, columns }: { data: any[], columns: string[] }) => {
+  if (!data || data.length === 0) return <p>No data to display</p>;
+
+  const rows = data.map((doc) => flattenData(doc));
+
+  return (
+    <table className="min-w-full table-auto mt-4 border border-gray-200">
+      <thead>
+        <tr>
+          {columns.map((col) => (
+            <th key={col} className="px-4 py-2 text-left bg-gray-100">{col}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, idx) => (
+          <tr key={idx} className="hover:bg-gray-50">
+            {columns.map((col) => (
+              <td key={col} className="px-4 py-2">{row[col] ?? ""}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+
+
 export default function Home() {
   const [collections, setCollections] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
@@ -81,8 +134,10 @@ export default function Home() {
       setError("Please select a collection and at least one field");
       return;
     }
+
     setLoading(true);
     setError(null);
+
     try {
       const res = await fetch("/api/graphql", {
         method: "POST",
@@ -101,8 +156,8 @@ export default function Home() {
       });
       const { data } = await res.json();
       setData(data.data);
-    } catch {
-      setError("Failed to fetch data");
+    } catch (error: any) {
+      setError(`Failed to fetch data: ${error.message}`); 
     } finally {
       setLoading(false);
     }
@@ -245,9 +300,9 @@ export default function Home() {
       {error && <p className="mt-4 text-red-500">{error}</p>}
 
       <div className="mt-6">
-        <h2 className="text-2xl font-semibold">Results</h2>
-        {renderTable()}
-      </div>
+      <h2 className="text-2xl font-semibold">Results</h2>
+      <DataTable data={data} columns={selectedFields} /> {/* Pass data and columns */}
+    </div>
     </div>
   );
 }
