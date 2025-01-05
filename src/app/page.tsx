@@ -164,19 +164,19 @@ export default function Home() {
     const columns = Array.from(new Set(selectedFields));
 
     return (
-      <table>
+      <table className="min-w-full table-auto mt-4 border border-gray-200">
         <thead>
           <tr>
             {columns.map((col) => (
-              <th key={col}>{col}</th>
+              <th key={col} className="px-4 py-2 text-left bg-gray-100">{col}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, idx) => (
-            <tr key={idx}>
+            <tr key={idx} className="hover:bg-gray-50">
               {columns.map((col) => (
-                <td key={col}>{row[col] || ""}</td>
+                <td key={col} className="px-4 py-2">{row[col] || ""}</td>
               ))}
             </tr>
           ))}
@@ -186,43 +186,43 @@ export default function Home() {
   };
 
   return (
-    <div>
-      <h1>Dynamic Schema Query</h1>
+    <div className="max-w-4xl mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-4">Dynamic Schema Query</h1>
 
-      <div>
-        <label>
-          Select Collection:
-          <select
-            value={selectedCollection || ""}
-            onChange={(e) => setSelectedCollection(e.target.value)}
-          >
-            <option value="" disabled>
-              Select a collection
+      <div className="mb-4">
+        <label className="block mb-2 font-medium">Select Collection:</label>
+        <select
+          value={selectedCollection || ""}
+          onChange={(e) => setSelectedCollection(e.target.value)}
+          className="w-full p-2 border border-gray-300 rounded-md"
+        >
+          <option value="" disabled>
+            Select a collection
+          </option>
+          {collections.map((col) => (
+            <option key={col} value={col}>
+              {col}
             </option>
-            {collections.map((col) => (
-              <option key={col} value={col}>
-                {col}
-              </option>
-            ))}
-          </select>
-        </label>
+          ))}
+        </select>
       </div>
 
       {selectedCollection && (
-        <div>
-          <h2>Select Fields</h2>
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold mb-2">Select Fields</h2>
           {schema.length > 0 ? (
             schema.map((field) => (
               field.type === "Object" ? (
-                <div key={field.name}>
+                <div key={field.name} className="mb-2">
                   <strong>{field.name}</strong>
                 </div>
               ) : (
-                <label key={field.name}>
+                <label key={field.name} className="block mb-1">
                   <input
                     type="checkbox"
                     value={field.name}
                     onChange={() => toggleField(field.name)}
+                    className="mr-2"
                   />
                   {field.name} ({field.type})
                 </label>
@@ -233,15 +233,19 @@ export default function Home() {
         </div>
       )}
 
-      <button onClick={fetchData} disabled={loading}>
+      <button
+        onClick={fetchData}
+        disabled={loading}
+        className="bg-blue-500 text-white px-4 py-2 rounded-md disabled:opacity-50"
+      >
         Fetch Data
       </button>
 
-      {loading && <p>Loading...</p>}
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {loading && <p className="mt-4 text-gray-500">Loading...</p>}
+      {error && <p className="mt-4 text-red-500">{error}</p>}
 
-      <div>
-        <h2>Results</h2>
+      <div className="mt-6">
+        <h2 className="text-2xl font-semibold">Results</h2>
         {renderTable()}
       </div>
     </div>

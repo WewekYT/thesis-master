@@ -2,27 +2,35 @@ import { ApolloServer } from "@apollo/server";
 import { startServerAndCreateNextHandler } from "@as-integrations/next";
 import { Db, MongoClient } from "mongodb";
 
-// MongoDB client initialization
-let client;
-let db: Db;
+import * as z from "zod";
 
-async function connectToDatabase() {
-  if (db) {
-    return db;
-  }
+let client: MongoClient | null = null;
+let db: Db | null = null;
 
-  try {
+const connectToDatabase = async () => {
+  if (!client) {
     client = new MongoClient(process.env.MONGODB_URI || "");
-    await client.connect();
-    db = client.db(); // Access the default database
-    return db;
-  } catch (error) {
-    console.error("Error connecting to database:", error);
-    throw new Error("Failed to connect to database.");
   }
-}
+  if (!db) {
+    await client.connect();
+    db = client.db();
+  }
+  return db;
+};
 
-// Define GraphQL Schema
+
+const FieldSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+});
+
+const DataQuerySchema = z.object({
+  collectionName: z.string(),
+  fields: z.array(z.string()),
+});
+
+
+// GraphQL Schema
 const typeDefs = `
   type Field {
     name: String
@@ -42,108 +50,74 @@ const typeDefs = `
   scalar JSON
 `;
 
-// Define resolvers for queries
+// Resolvers
 const resolvers = {
   Query: {
-    // Get list of all collections
     collections: async () => {
-      try {
-        const db = await connectToDatabase();
-        const collections = await db.listCollections().toArray();
-        return collections.map((col) => ({ name: col.name }));
-      } catch (error) {
-        console.error("Error fetching collections:", error);
-        throw new Error("Failed to fetch collections.");
-      }
+      const db = await connectToDatabase();
+      const collections = await db.listCollections().toArray();
+      return collections.map((col) => ({ name: col.name }));
     },
 
-    // Get schema of the selected collection
     schema: async (_, { collectionName }) => {
-      try {
-        const db = await connectToDatabase();
-        const sampleDoc = await db.collection(collectionName).findOne({});
-        
-        if (!sampleDoc) {
-          return [];
-        }
-
-        const docJSON = sampleDoc.toJSON ? sampleDoc.toJSON() : sampleDoc;
-        if (!docJSON || typeof docJSON !== "object") {
-          throw new Error("Invalid document structure");
-        }
-
-        const getFieldTypes = (obj, prefix = "") => {
-          return Object.entries(obj).flatMap(([key, value]) => {
-            const fullName = prefix ? `${prefix}.${key}` : key;
-        
-            // Exclude _id and related fields
-            if (fullName.includes("_id")) return [];
-        
-            // Handle arrays and objects
-            if (Array.isArray(value)) {
-              if (value.length > 0 && typeof value[0] === "object") {
-                // Expand array of objects
-                return [
-                  { name: fullName, type: "Array<Object>" },
-                  ...getFieldTypes(value[0], fullName),
-                ];
-              }
-              return { name: fullName, type: "Array" };
-            } else if (typeof value === "object" && value !== null) {
-              const children = getFieldTypes(value, fullName);
-              if (children.length > 0) {
-                return [{ name: fullName, type: "Object" }, ...children];
-              }
-              return { name: fullName, type: "Object" };
-            }
-        
-            // Include primitive fields
-            return { name: fullName, type: typeof value };
-          });
-        };
-        
-
-        return getFieldTypes(docJSON);
-      } catch (error) {
-        console.error(`Error fetching schema for ${collectionName}:`, error);
-        throw new Error("Failed to fetch schema.");
+      const db = await connectToDatabase();
+      const sampleDoc = await db.collection(collectionName).findOne();
+      if (!sampleDoc) {
+        return [];
       }
+
+      const getFieldTypes = (obj: any, prefix = ""): z.infer<typeof FieldSchema>[] =>
+        Object.entries(obj).flatMap(([key, value]) => {
+          const fullName = prefix ? `${prefix}.${key}` : key;
+          if (fullName.startsWith("_id")) {
+            return [];
+          }
+
+          if (Array.isArray(value)) {
+            return value.length > 0 && typeof value[0] === "object"
+              ? [{ name: fullName, type: "Array<Object>" }, ...getFieldTypes(value[0], fullName)]
+              : [{ name: fullName, type: "Array" }];
+          } else if (typeof value === "object" && value !== null) {
+            const children = getFieldTypes(value, fullName);
+            return children.length > 0
+              ? [{ name: fullName, type: "Object" }, ...children]
+              : [{ name: fullName, type: "Object" }];
+          }
+          return [{ name: fullName, type: typeof value }];
+        });
+
+      return getFieldTypes(sampleDoc);
     },
 
-    // Fetch data based on selected fields from a collection
-    data: async (_, { collectionName, fields }) => {
-      try {
-        const db = await connectToDatabase();
-    
-        // Build projection object for nested fields
-        const projection = fields.reduce((acc, field) => {
-          field.split(".").reduce((obj, key, idx, src) => {
-            obj[key] = idx === src.length - 1 ? 1 : obj[key] || {};
-            return obj[key];
-          }, acc);
-          return acc;
-        }, {});
-    
-        const documents = await db.collection(collectionName).find({}, { projection }).toArray();
-    
-        return documents.map((doc) => doc);
-      } catch (error) {
-        console.error(`Error fetching data from ${collectionName}:`, error);
-        throw new Error("Failed to fetch data.");
+    data: async (_, args) => {
+      const parsedArgs = DataQuerySchema.safeParse(args);
+      if (!parsedArgs.success) {
+        console.error("Invalid input:", parsedArgs.error);
+        throw new Error("Invalid input.");
       }
+      const { collectionName, fields } = parsedArgs.data;
+
+      const db = await connectToDatabase();
+      const projection = fields.reduce((acc, field) => {
+        const parts = field.split(".");
+        let current = acc;
+        for (let i = 0; i < parts.length; i++) {
+          current[parts[i]] = i === parts.length - 1 ? 1 : current[parts[i]] || {};
+          current = current[parts[i]];
+        }
+        return acc;
+      }, {});
+
+      return await db.collection(collectionName).find({}, { projection }).toArray();
     },
-    
   },
 };
 
-// Initialize Apollo Server
-const apolloServer = new ApolloServer({
-  typeDefs,
-  resolvers,
-});
 
-export typeDefs;
-export resolvers;
+const apolloServer = new ApolloServer({ typeDefs, resolvers });
 
-// Export Apollo Server handler for Next.js
+export const schema = typeDefs;
+export const apiResolvers = resolvers;
+
 export default startServerAndCreateNextHandler(apolloServer);
+
