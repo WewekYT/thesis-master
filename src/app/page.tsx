@@ -12,9 +12,7 @@ const flattenData = (doc: any, prefix = ""): Record<string, any> => {
   return Object.entries(doc).reduce((acc, [key, value]) => {
     const fieldName = prefix ? `${prefix}.${key}` : key;
 
-    if (value && value.$date) {
-      acc[fieldName] = new Date(value.$date).toISOString();
-    } else if (Array.isArray(value)) {
+  if (Array.isArray(value)) {
       acc[fieldName] = value.map((item) =>
         typeof item === "object"
           ? Object.entries(item).map(([k, v]) => `${k}: ${v}`).join(", ")
@@ -33,7 +31,7 @@ const flattenData = (doc: any, prefix = ""): Record<string, any> => {
 
 // Component to render the data table
 const DataTable = ({ data, columns }: { data: any[], columns: string[] }) => {
-  if (!data || data.length === 0) return <p>No data to display</p>;
+  if (!data || data.length === 0) return <p>W tej chwili brak danych do wyświetlenia. Spróbuj ponownie.</p>;
 
   const rows = data.map((doc) => flattenData(doc));
 
@@ -171,88 +169,19 @@ export default function Home() {
     );
   };
 
-  const renderTable = () => {
-    if ( !data || data.length === 0) return <p>No data to display</p>;
-
-    const flattenData = (doc: any, prefix = "") => {
-      return Object.entries(doc).reduce((acc, [key, value]) => {
-        const fieldName = prefix ? `${prefix}.${key}` : key;
-    
-        // Handle MongoDB date fields
-        if (value && value.$date) {
-          acc[fieldName] = new Date(value.$date).toISOString();
-          return acc;
-        }
-
-        if (Array.isArray(value)) {
-          acc[fieldName] = value.map((item, index) => {
-            if (typeof item === "object") {
-              return Object.entries(item)
-                .map(([k, v]) => `${k}: ${v}`)
-                .join(", ");
-            }
-            return item;
-          }).join("; "); // Join array items into a string
-          return acc;
-        }
-
-        if (typeof value === "object" && value !== null) {
-          return { ...acc, ...flattenData(value, fieldName) };
-        }        
-    
-        if (
-          value &&
-          typeof value === "object" &&
-          !Array.isArray(value) &&
-          Object.keys(value).length > 0
-        ) {
-          return { ...acc, ...flattenData(value, fieldName) };
-        }
-    
-        acc[fieldName] = value;
-        return acc;
-      }, {});
-    };
-    
-
-    const rows = data.map((doc) => flattenData(doc));
-    const columns = Array.from(new Set(selectedFields));
-
-    return (
-      <table className="min-w-full table-auto mt-4 border border-gray-200">
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th key={col} className="px-4 py-2 text-left bg-gray-100">{col}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, idx) => (
-            <tr key={idx} className="hover:bg-gray-50">
-              {columns.map((col) => (
-                <td key={col} className="px-4 py-2">{row[col] || ""}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
-  };
-
   return (
     <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-4">Dynamic Schema Query</h1>
+      <h1 className="text-3xl font-bold mb-4">Podgląd danych</h1>
 
       <div className="mb-4">
-        <label className="block mb-2 font-medium">Select Collection:</label>
+        <label className="block mb-2 font-medium">Wybór kolekcji:</label>
         <select
           value={selectedCollection || ""}
           onChange={(e) => setSelectedCollection(e.target.value)}
           className="w-full p-2 border border-gray-300 rounded-md"
         >
           <option value="" disabled>
-            Select a collection
+            Wybierz...
           </option>
           {collections.map((col) => (
             <option key={col} value={col}>
@@ -264,15 +193,10 @@ export default function Home() {
 
       {selectedCollection && (
         <div className="mb-4">
-          <h2 className="text-xl font-semibold mb-2">Select Fields</h2>
+          <h2 className="text-xl font-semibold mb-2">Wybór pól</h2>
           {schema.length > 0 ? (
             schema.map((field) => (
-              field.type === "Object" ? (
-                <div key={field.name} className="mb-2">
-                  <strong>{field.name}</strong>
-                </div>
-              ) : (
-                <label key={field.name} className="block mb-1">
+              <label key={field.name} className="block mb-1">
                   <input
                     type="checkbox"
                     value={field.name}
@@ -281,9 +205,9 @@ export default function Home() {
                   />
                   {field.name} ({field.type})
                 </label>
-            )))
+            ))
           ) : (
-            <p>No fields available for the selected collection.</p>
+            <p>Ta kolekcja nie przechowuje żadnych pól.</p>
           )}
         </div>
       )}
@@ -293,14 +217,14 @@ export default function Home() {
         disabled={loading}
         className="bg-blue-500 text-white px-4 py-2 rounded-md disabled:opacity-50"
       >
-        Fetch Data
+        Pobierz dane
       </button>
 
-      {loading && <p className="mt-4 text-gray-500">Loading...</p>}
+      {loading && <p className="mt-4 text-gray-500">Wczytywanie...</p>}
       {error && <p className="mt-4 text-red-500">{error}</p>}
 
       <div className="mt-6">
-      <h2 className="text-2xl font-semibold">Results</h2>
+      <h2 className="text-2xl font-semibold">Wyniki dla wybranych pól:</h2>
       <DataTable data={data} columns={selectedFields} /> {/* Pass data and columns */}
     </div>
     </div>
